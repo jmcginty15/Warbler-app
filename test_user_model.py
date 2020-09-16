@@ -26,11 +26,11 @@ from app import app
 # once for all tests --- in each test, we'll delete the data
 # and create fresh new clean test data
 
+db.drop_all()
 db.create_all()
 
-
 class UserModelTestCase(TestCase):
-    """Test views for messages."""
+    """Test models for users."""
 
     def setUp(self):
         """Create test client, add sample data."""
@@ -44,15 +44,43 @@ class UserModelTestCase(TestCase):
     def test_user_model(self):
         """Does basic model work?"""
 
-        u = User(
+        # Use the signup class method to create users
+        u1 = User.signup(
             email="test@test.com",
-            username="testuser",
+            username="testuser1",
             password="HASHED_PASSWORD"
         )
 
-        db.session.add(u)
+        u2 = User.signup(
+            email='test2@test.com',
+            username='testuser2',
+            password='HASHED_PASSWORD_2'
+        )
+
         db.session.commit()
 
+        # Test authentication class method
+        self.assertEqual(User.authenticate('testuser1', 'HASHED_PASSWORD'), u1)
+        self.assertEqual(User.authenticate('testuser1', 'THE_WRONG_PASSWORD'), False)
+        self.assertEqual(User.authenticate('thewrongusername', 'HASHED_PASSWORD'), False)
+
         # User should have no messages & no followers
-        self.assertEqual(len(u.messages), 0)
-        self.assertEqual(len(u.followers), 0)
+        self.assertEqual(len(u1.messages), 0)
+        self.assertEqual(len(u1.followers), 0)
+
+        # Test __repr__ method
+        self.assertEqual(u1.__repr__(), '<User #1: testuser1, test@test.com>')
+        
+        # Passwords should be hashed and therefore should not be stored as the entered password
+        self.assertNotEqual(u1.password, 'HASHED_PASSWORD')
+        self.assertNotEqual(u2.password, 'HASHED_PASSWORD_2')
+
+        # Have u2 follow u1
+        u1.followers.append(u2)
+        db.session.commit()
+
+        # Test follower methods
+        self.assertEqual(u1.is_following(u2), False)
+        self.assertEqual(u1.is_followed_by(u2), True)
+        self.assertEqual(u2.is_following(u1), True)
+        self.assertEqual(u2.is_followed_by(u1), False)
