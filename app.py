@@ -180,6 +180,14 @@ def users_followers(user_id):
     return render_template('users/followers.html', user=user)
 
 
+@app.route('/users/<int:user_id>/likes')
+def show_likes(user_id):
+    """Show all liked messages for this user"""
+
+    user = User.query.get_or_404(user_id)
+    return render_template('home.html', user=user, messages=user.likes)
+
+
 @app.route('/users/follow/<int:follow_id>', methods=['POST'])
 def add_follow(follow_id):
     """Add a follow for the currently-logged-in user."""
@@ -252,6 +260,36 @@ def delete_user():
     return redirect("/signup")
 
 
+@app.route('/users/add_like/<int:message_id>', methods=['POST'])
+def like_message(message_id):
+    """Have currently logged in user like a message."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
+    message = Message.query.get_or_404(message_id)
+    g.user.likes.append(message)
+    db.session.commit()
+    flash('Added to liked messages!', 'success')
+    return redirect(f'/users/{g.user.id}')
+
+
+@app.route('/users/remove_like/<int:message_id>', methods=['POST'])
+def unlike_message(message_id):
+    """Have currently logged in user unlike a message."""
+
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+    
+    message = Message.query.get_or_404(message_id)
+    g.user.likes.remove(message)
+    db.session.commit()
+    flash('Removed from liked messages!', 'success')
+    return redirect(f'/users/{g.user.id}')
+
+
 ##############################################################################
 # Messages routes:
 
@@ -315,6 +353,7 @@ def homepage():
 
     if g.user:
         followed_ids = [followed.id for followed in g.user.following]
+        followed_ids.append(g.user.id)
         messages = (Message
                     .query
                     .filter(Message.user_id.in_(followed_ids))
@@ -322,7 +361,7 @@ def homepage():
                     .limit(100)
                     .all())
 
-        return render_template('home.html', messages=messages)
+        return render_template('home.html', messages=messages, user=g.user)
 
     else:
         return render_template('home-anon.html')
