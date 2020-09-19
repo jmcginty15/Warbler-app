@@ -184,6 +184,10 @@ def users_followers(user_id):
 def show_likes(user_id):
     """Show all liked messages for this user"""
 
+    if not g.user:
+        flash("Access unauthorized.", "danger")
+        return redirect("/")
+
     user = User.query.get_or_404(user_id)
     return render_template('home.html', user=user, messages=user.likes)
 
@@ -327,12 +331,12 @@ def messages_show(message_id):
 @app.route('/messages/<int:message_id>/delete', methods=["POST"])
 def messages_destroy(message_id):
     """Delete a message."""
+    msg = Message.query.get(message_id)
 
-    if not g.user:
+    if not g.user or g.user.id != msg.user_id:
         flash("Access unauthorized.", "danger")
         return redirect("/")
 
-    msg = Message.query.get(message_id)
     db.session.delete(msg)
     db.session.commit()
 

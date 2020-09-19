@@ -26,6 +26,7 @@ from app import app, CURR_USER_KEY
 # once for all tests --- in each test, we'll delete the data
 # and create fresh new clean test data
 
+db.drop_all()
 db.create_all()
 
 # Don't have WTForms use CSRF at all, since it's a pain to test
@@ -38,9 +39,8 @@ class MessageViewTestCase(TestCase):
 
     def setUp(self):
         """Create test client, add sample data."""
-
-        User.query.delete()
-        Message.query.delete()
+        db.drop_all()
+        db.create_all()
 
         self.client = app.test_client()
 
@@ -49,10 +49,15 @@ class MessageViewTestCase(TestCase):
                                     password="testuser",
                                     image_url=None)
 
+        self.testuser2 = User.signup(username="testuser2",
+                                    email="test2@test.com",
+                                    password="testuser2",
+                                    image_url=None)
+
         db.session.commit()
 
-    def test_add_message(self):
-        """Can user add a message?"""
+    def test_add_delete_message(self):
+        """Can user add and delete a message?"""
 
         # Since we need to change the session to mimic logging in,
         # we need to use the changing-session trick:
@@ -71,3 +76,57 @@ class MessageViewTestCase(TestCase):
 
             msg = Message.query.one()
             self.assertEqual(msg.text, "Hello")
+
+            # Delete message
+            res = c.post(f'/messages/{msg.id}/delete')
+
+            self.assertEqual(res.status_code, 302)
+            msg = Message.query.one_or_none()
+            self.assertEqual(msg, None)
+
+            # Mimic logging out
+            with c.session_transaction() as sess:
+                del sess[CURR_USER_KEY]
+            
+            # Make sure posting messages is not allowed when logged out
+            res = c.post('/messages/new', data={'text': 'yeet'})
+            self.assertEqual(res.status_code, 302)            
+            res = c.post('/messages/new', data={'text': 'yeet'}, follow_redirects=True)
+            html = res.get_data(as_text=True)
+            self.assertEqual(res.status_code, 200)
+            self.assertIn('Access unauthorized.', html)
+
+            # Add new message to test delete
+            msg = Message(text='yeet', user_id=self.testuser.id)
+            db.session.add(msg)
+            db.session.commit()
+
+            # Make sure deleting messages is not allowed when logged out
+            res = c.post(f'/messages/{msg.id}/delete')
+            self.assertEqual(res.status_code, 302)            
+            res = c.post(f'/messages/{msg.id}/delete', follow_redirects=True)
+            html = res.get_data(as_text=True)
+            self.assertEqual(res.status_code, 200)
+            self.assertIn('Access unauthorized.', html)
+    
+    def test_delete(self):
+        """Make sure a user cannot delete a message posted by a different user"""
+
+        # Log in test user 2
+        with self.client as c:
+            with c.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser2.id
+            
+            # Add new message to test delete
+            msg = Message(text='yeet', user_id=1)
+            db.session.add(msg)
+            db.session.commit()
+            
+            # Make sure user 2 cannot delete a message posted by user 1
+            res = c.post(f'/messages/{msg.id}/delete')
+            self.assertEqual(res.status_code, 302)            
+            res = c.post(f'/messages/{msg.id}/delete', follow_redirects=True)
+            html = res.get_data(as_text=True)
+            self.assertEqual(res.status_code, 200)
+            self.assertIn('Access unauthorized.', html)
+
